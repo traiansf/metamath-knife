@@ -54,13 +54,14 @@ use crate::segment::{Comparer, Segment, SegmentOrder, SegmentRef};
 use crate::statement::{SegmentId, StatementAddress};
 use crate::util::{HashMap, HashSet};
 use crate::{parser, Span, StatementRef};
-use filetime::FileTime;
 use std::collections::VecDeque;
 use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::RangeBounds;
 use std::str;
 use std::sync::Arc;
+
+type FileTime = String;
 
 /// Memory buffer wrapper which hashes by length.
 ///
@@ -139,7 +140,7 @@ struct FileSR(Option<(String, FileTime)>, Vec<SliceSR>);
 /// option block and the work queue executor, although those responsibilities
 /// may be moved.
 #[derive(Debug, Clone)]
-pub(crate) struct SegmentSet {
+pub struct SegmentSet {
     /// The work queue for use with this database.
     pub(crate) exec: Executor,
     /// Order structure which records the relative order of segment IDs created

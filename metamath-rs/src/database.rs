@@ -125,7 +125,6 @@ use std::sync::Arc;
 use std::sync::Condvar;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Instant;
 
 /// Structure for options that affect database processing, and must be constant
 /// for the lifetime of the database container.
@@ -397,14 +396,9 @@ impl Default for Database {
     }
 }
 
-pub(crate) fn time<R, F: FnOnce() -> R>(opts: &DbOptions, name: &str, f: F) -> R {
-    let now = Instant::now();
-    let ret = f();
-    if opts.timing {
-        // no as_msecs :(
-        println!("{} {}ms", name, (now.elapsed() * 1000).as_secs());
-    }
-    ret
+#[inline]
+pub(crate) fn time<R, F: FnOnce() -> R>(_opts: &DbOptions, _name: &str, f: F) -> R {
+    f()
 }
 
 impl Drop for Database {
@@ -481,7 +475,7 @@ impl Database {
     }
 
     /// Obtains a reference to the current parsed data.
-    pub(crate) const fn parse_result(&self) -> &Arc<SegmentSet> {
+    pub const fn parse_result(&self) -> &Arc<SegmentSet> {
         &self.segments
     }
 
@@ -719,10 +713,37 @@ impl Database {
 
     /// Parses and verifies file already loaded from FS into data
     pub fn parse_and_verify(&mut self, start: String, data: Vec<(String, Vec<u8>)>) -> usize {
-        self.parse(start.clone(), data.clone());
+        self.parse_and_name_scope_passes(start, data);
+        self.verify()
+    }
 
-        self.verify_pass();
+    pub fn verify(&mut self) -> usize {
+        let ver = verify(self.parse_result(), self.name_result(), self.scope_result());
+        self.prev_verify = Some(ver.clone());
+        self.verify = Some(ver);
+        let _ = self.verify_result();
 
         self.diag_notations().len()
     }
+
+    ///
+    pub fn parse_and_name_scope_passes(&mut self, start: String, data: Vec<(String, Vec<u8>)>) {
+        self.parse(start.clone(), data.clone());
+
+        self.name_pass();
+        self.scope_pass();
+    }
+
+    pub fn init_verify(&mut self, parse_result: SegmentSet, name_result: Nameset, scope_result: ScopeResult) {
+        self.segments = Arc::new(parse_result);
+        self.nameset = Some(Arc::new(name_result));
+        self.scopes = Some(Arc::new(scope_result));
+    }
+}
+
+/// Verify a preprocessed database
+pub fn verify(segments: &Arc<SegmentSet>, nset: &Arc<Nameset>, scope: &Arc<ScopeResult>) -> Arc<VerifyResult> {
+    let mut ver = Arc::default();
+    verify::verify(Arc::make_mut(&mut ver), segments, nset, scope);
+    ver
 }

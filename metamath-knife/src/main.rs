@@ -31,8 +31,18 @@ fn main() {
     fh.read_to_end(&mut buf).unwrap();
     data.push((start.clone(), buf));
 
+    // Parsing
+    db.parse_and_name_scope_passes(start, data);
+    let parse_result = db.parse_result().as_ref().clone();
+    let name_result = db.name_result().as_ref().clone();
+    let scope_result = db.scope_result().as_ref().clone();
 
-    let count_diags = db.parse_and_verify(start.clone(), data.clone());
+    // Init new database with parsed data
+    let mut db_new = Database::new(options);
+    db_new.init_verify(parse_result, name_result, scope_result);
+
+    // Verify
+    let count_diags = db_new.verify();
 
     println!("{count_diags} diagnostics issued.");
 
