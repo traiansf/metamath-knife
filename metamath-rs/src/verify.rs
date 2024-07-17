@@ -34,7 +34,7 @@ use crate::segment::{Comparer, Segment, SegmentOrder, SegmentRef};
 use crate::segment_set::SegmentSet;
 use crate::statement::{SegmentId, Span, StatementAddress, TokenPtr, NO_STATEMENT};
 use crate::util::{fast_clear, fast_extend, HashMap};
-use crate::{parser, Database, StatementRef, StatementType};
+use crate::{StatementRef, StatementType};
 use std::mem;
 use std::ops::Range;
 use std::sync::Arc;
@@ -865,9 +865,6 @@ pub(crate) fn verify(
                     return (id, old_res);
                 }
             }
-            if segments2.options.trace_recalc {
-                println!("verify({:?})", parser::guess_buffer_name(&sref.buffer));
-            }
             (id, Arc::new(verify_segment(&segments2, &nset, &scope, id)))
         }))
     }
@@ -876,37 +873,5 @@ pub(crate) fn verify(
     for promise in ssrq {
         let (id, arc) = promise.wait();
         result.segments.insert(id, arc);
-    }
-}
-
-impl Database {
-    /// Parse a single $p statement, returning the result of the given
-    /// proof builder, or an error if the proof is faulty
-    pub fn verify_one<P: ProofBuilder>(
-        &self,
-        builder: &mut P,
-        stmt: StatementRef<'_>,
-    ) -> Result<P::Item> {
-        let dummy_frame = Frame::default();
-        let mut state = VerifyState {
-            this_seg: stmt.segment(),
-            scoper: ScopeReader::new(self.scope_result()),
-            nameset: self.name_result(),
-            builder,
-            order: &self.parse_result().order,
-            cur_frame: &dummy_frame,
-            stack: Vec::new(),
-            stack_buffer: Vec::new(),
-            prepared: Vec::new(),
-            temp_buffer: Vec::new(),
-            subst_info: Vec::new(),
-            var2bit: HashMap::default(),
-            dv_map: &dummy_frame.optional_dv,
-        };
-
-        assert!(stmt.statement_type() == StatementType::Provable);
-        let frame = state.scoper.get(stmt.label()).unwrap();
-        state.cur_frame = frame;
-        verify_proof(&mut state, stmt)
     }
 }

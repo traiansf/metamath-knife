@@ -98,27 +98,18 @@
 //! estimated runtime.  This requires an additional argument when queueing.
 
 use crate::as_str;
-use crate::axiom_use::UsageResult;
 use crate::diag;
 use crate::diag::Diagnostic;
-use crate::export;
 use crate::formula::Formula;
 use crate::formula::Label;
 use crate::formula::TypeCode;
-use crate::grammar;
-use crate::grammar::Grammar;
-use crate::grammar::StmtParse;
 use crate::line_cache::LineCache;
 use crate::nameck::Nameset;
-use crate::outline::Outline;
-use crate::outline::OutlineNodeRef;
 use crate::proof::ProofTreeArray;
 use crate::scopeck;
 use crate::scopeck::ScopeResult;
-use crate::segment::Comparer;
 use crate::segment_set::SegmentSet;
 use crate::statement::StatementAddress;
-use crate::typesetting::TypesettingData;
 use crate::verify;
 use crate::verify::VerifyResult;
 use crate::StatementRef;
@@ -127,7 +118,6 @@ use std::cmp::Ordering;
 use std::collections::BinaryHeap;
 use std::fmt;
 use std::fmt::Debug;
-use std::fs::File;
 use std::ops::Bound;
 use std::ops::RangeBounds;
 use std::panic;
@@ -399,11 +389,6 @@ pub struct Database {
     scopes: Option<Arc<ScopeResult>>,
     prev_verify: Option<Arc<VerifyResult>>,
     verify: Option<Arc<VerifyResult>>,
-    usage: Option<Arc<UsageResult>>,
-    typesetting: Option<Arc<TypesettingData>>,
-    outline: Option<Arc<Outline>>,
-    grammar: Option<Arc<Grammar>>,
-    stmt_parse: Option<Arc<StmtParse>>,
 }
 
 impl Default for Database {
@@ -432,8 +417,6 @@ impl Drop for Database {
             self.prev_nameset = None;
             self.nameset = None;
             Arc::make_mut(&mut self.segments).clear();
-            self.typesetting = None;
-            self.outline = None;
         });
     }
 }
@@ -448,16 +431,11 @@ impl Database {
         let options = Arc::new(options);
         let exec = Executor::new(options.jobs);
         Database {
-            segments: Arc::new(SegmentSet::new(options.clone(), &exec)),
+            segments: Arc::new(SegmentSet::new(&exec)),
             options,
             nameset: None,
             scopes: None,
             verify: None,
-            usage: None,
-            typesetting: None,
-            outline: None,
-            grammar: None,
-            stmt_parse: None,
             prev_nameset: None,
             prev_scopes: None,
             prev_verify: None,
@@ -499,10 +477,6 @@ impl Database {
             self.nameset = None;
             self.scopes = None;
             self.verify = None;
-            self.usage = None;
-            self.typesetting = None;
-            self.outline = None;
-            self.grammar = None;
         });
     }
 
@@ -625,164 +599,6 @@ impl Database {
         )
     }
 
-    /// Calculates and returns axiom usage information for the database.
-    ///
-    /// This is an optimized verifier which returns no useful information other
-    /// than error diagnostics.  It does not save any parsed proof data.
-    pub fn verify_usage_pass(&mut self) -> &Arc<UsageResult> {
-        if self.usage.is_none() {
-            time(&self.options.clone(), "usage", || {
-                let parse = self.parse_result();
-                let mut usage = UsageResult::default();
-                crate::axiom_use::verify_usage(parse, &mut usage);
-                self.usage = Some(Arc::new(usage));
-            });
-        }
-        self.usage.as_ref().unwrap()
-    }
-
-    /// Returns axiom usage verification information for the database.
-    /// Returns `None` if [`Database::verify_usage_pass`] was not previously called.
-    ///
-    /// This is an optimized verifier which returns no useful information other
-    /// than error diagnostics.  It does not save any parsed proof data.
-    #[inline]
-    #[must_use]
-    pub const fn try_usage_result(&self) -> Option<&Arc<UsageResult>> {
-        self.usage.as_ref()
-    }
-
-    /// Computes and returns the typesetting data.
-    pub fn typesetting_pass(&mut self) -> &Arc<TypesettingData> {
-        if self.typesetting.is_none() {
-            time(&self.options.clone(), "typesetting", || {
-                let typesetting = self.parse_result().build_typesetting_data();
-                self.typesetting = Some(Arc::new(typesetting));
-            })
-        }
-        self.typesetting_result()
-    }
-
-    /// Returns the typesetting data.
-    /// Returns `None` if [`Database::typesetting_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub const fn try_typesetting_result(&self) -> Option<&Arc<TypesettingData>> {
-        self.typesetting.as_ref()
-    }
-
-    /// Returns the typesetting data.
-    /// Panics if [`Database::typesetting_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub fn typesetting_result(&self) -> &Arc<TypesettingData> {
-        self.try_typesetting_result().expect(
-            "The database has not run `typesetting_pass()`. Please ensure it is run before calling depending methods."
-        )
-    }
-
-    /// Computes and returns the root node of the outline.
-    pub fn outline_pass(&mut self) -> &Arc<Outline> {
-        if self.outline.is_none() {
-            time(&self.options.clone(), "outline", || {
-                let outline = self.parse_result().build_outline();
-                self.outline = Some(Arc::new(outline));
-            })
-        }
-        self.outline_result()
-    }
-
-    /// Returns the root node of the outline.
-    /// Panics if [`Database::outline_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub const fn try_outline_result(&self) -> Option<&Arc<Outline>> {
-        self.outline.as_ref()
-    }
-
-    /// Returns the root node of the outline.
-    /// Panics if [`Database::outline_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub fn outline_result(&self) -> &Arc<Outline> {
-        self.try_outline_result().expect(
-            "The database has not run `outline_pass()`. Please ensure it is run before calling depending methods."
-        )
-    }
-
-    /// Builds and returns the grammar.
-    pub fn grammar_pass(&mut self) -> &Arc<Grammar> {
-        if self.grammar.is_none() {
-            self.name_pass();
-            self.scope_pass();
-            time(&self.options.clone(), "grammar", || {
-                self.grammar = Some(Arc::new(Grammar::new(self)));
-            })
-        }
-        self.grammar_result()
-    }
-
-    /// Returns the grammar.
-    /// Returns `None` if [`Database::grammar_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub const fn try_grammar_result(&self) -> Option<&Arc<Grammar>> {
-        self.grammar.as_ref()
-    }
-
-    /// Returns the grammar.
-    /// Panics if [`Database::grammar_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub fn grammar_result(&self) -> &Arc<Grammar> {
-        self.try_grammar_result().expect(
-            "The database has not run `grammar_pass()`. Please ensure it is run before calling depending methods."
-        )
-    }
-
-    /// Parses the statements using the grammar.
-    pub fn stmt_parse_pass(&mut self) -> &Arc<StmtParse> {
-        if self.stmt_parse.is_none() {
-            self.name_pass();
-            self.scope_pass();
-            self.grammar_pass();
-            time(&self.options.clone(), "stmt_parse", || {
-                let parse = self.parse_result();
-                let name = self.name_result();
-                let grammar = self.grammar_result();
-                let mut stmt_parse = StmtParse::default();
-                grammar::parse_statements(&mut stmt_parse, parse, name, grammar);
-                self.stmt_parse = Some(Arc::new(stmt_parse));
-            })
-        }
-        self.stmt_parse_result()
-    }
-
-    /// Returns the statements parsed using the grammar.
-    /// Returns `None` if [`Database::stmt_parse_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub const fn try_stmt_parse_result(&self) -> Option<&Arc<StmtParse>> {
-        self.stmt_parse.as_ref()
-    }
-
-    /// Returns the statements parsed using the grammar.
-    /// Panics if [`Database::stmt_parse_pass`] was not previously called.
-    #[inline]
-    #[must_use]
-    pub fn stmt_parse_result(&self) -> &Arc<StmtParse> {
-        self.try_stmt_parse_result().expect(
-            "The database has not run `stmt_parse_pass()`. Please ensure it is run before calling depending methods."
-        )
-    }
-
-    /// A getter method which does not build the outline.
-    #[inline]
-    #[must_use]
-    pub const fn get_outline(&self) -> Option<&Arc<Outline>> {
-        self.outline.as_ref()
-    }
-
     /// Get a statement by label. Requires: [`Database::name_pass`]
     #[must_use]
     pub fn statement(&self, name: &[u8]) -> Option<StatementRef<'_>> {
@@ -852,36 +668,6 @@ impl Database {
             .flat_map(move |seg| seg.range_address(&self.segments.order, (start2, end2)))
     }
 
-    /// Compare the database position of two label atoms. Proofs can only reference earlier theorems.
-    #[must_use]
-    pub fn cmp_label(&self, left: &Label, right: &Label) -> Option<std::cmp::Ordering> {
-        let token_left = self.name_result().atom_name(*left);
-        let token_right = self.name_result().atom_name(*right);
-        self.cmp(token_left, token_right)
-    }
-
-    /// Compare the database position of two labels. Proofs can only reference earlier theorems.
-    #[must_use]
-    pub fn cmp(&self, left: &[u8], right: &[u8]) -> Option<std::cmp::Ordering> {
-        let lookup_left = self.name_result().lookup_label(left)?;
-        let lookup_right = self.name_result().lookup_label(right)?;
-        Some(
-            self.parse_result()
-                .order
-                .cmp(&lookup_left.address, &lookup_right.address),
-        )
-    }
-
-    /// Compare the database position of two addresses. Proofs can only reference earlier theorems.
-    #[must_use]
-    pub fn cmp_address(
-        &self,
-        left: &StatementAddress,
-        right: &StatementAddress,
-    ) -> std::cmp::Ordering {
-        self.parse_result().order.cmp(left, right)
-    }
-
     /// Returns the typecode for a given label.
     #[must_use]
     pub fn label_typecode(&self, label: Label) -> TypeCode {
@@ -889,28 +675,6 @@ impl Database {
             .statement_by_label(label)
             .expect("Invalid label provided to `label_typecode`.");
         self.name_result().get_atom(sref.math_at(0).slice)
-    }
-
-    /// Export an mmp file for a given statement.
-    /// Requires: [`Database::name_pass`], [`Database::scope_pass`]
-    pub fn export(&self, stmt: &str) {
-        time(&self.options, "export", || {
-            let sref = self.statement(stmt.as_bytes()).unwrap_or_else(|| {
-                panic!("Label {stmt} did not correspond to an existing statement")
-            });
-
-            File::create(format!("{stmt}.mmp"))
-                .map_err(export::ExportError::Io)
-                .and_then(|mut file| self.export_mmp(sref, &mut file))
-                .unwrap()
-        })
-    }
-
-    /// Returns the proof tree for a given database theorem,
-    /// in the form of a `ProofTreeArray`
-    #[must_use]
-    pub fn get_proof_tree(&self, sref: StatementRef<'_>) -> Option<ProofTreeArray> {
-        ProofTreeArray::from_stmt(self, sref, true).ok()
     }
 
     /// Returns the syntax proof tree for a given formula,
@@ -923,73 +687,6 @@ impl Database {
             .build_syntax_proof::<usize, Vec<usize>>(&mut vec![], &mut arr);
         arr.calc_indent();
         arr
-    }
-
-    /// Export the grammar of this database in DOT format.
-    /// Requires: [`Database::name_pass`], [`Database::grammar_pass`]
-    #[cfg(feature = "dot")]
-    pub fn export_grammar_dot(&self) {
-        time(&self.options, "export_grammar_dot", || {
-            let name = self.name_result();
-            let grammar = self.grammar_result();
-
-            File::create("grammar.dot")
-                .map_err(export::ExportError::Io)
-                .and_then(|mut file| grammar.export_dot(name, &mut file))
-                .unwrap()
-        })
-    }
-
-    /// Dump the grammar of this database.
-    /// Requires: [`Database::name_pass`], [`Database::grammar_pass`]
-    pub fn dump_grammar(&self) {
-        time(&self.options, "dump_grammar", || {
-            self.grammar_result().dump(self);
-        })
-    }
-
-    /// Dump the formulas of this database.
-    /// Requires: [`Database::name_pass`], [`Database::stmt_parse_pass`]
-    pub fn dump_formula(&self) {
-        time(&self.options, "dump_formulas", || {
-            self.stmt_parse_result().dump(self);
-        })
-    }
-
-    /// Verify that printing the formulas of this database gives back the original formulas.
-    /// Requires: [`Database::name_pass`], [`Database::stmt_parse_pass`]
-    pub fn verify_parse_stmt(&self) {
-        time(&self.options, "verify_parse_stmt", || {
-            drop(self.stmt_parse_result().verify(self));
-        })
-    }
-
-    /// Dump the outline of this database.
-    /// Requires: [`Database::outline_pass`]
-    pub fn print_outline(&self) {
-        time(&self.options, "print_outline", || {
-            self.outline_result().dump(self);
-        })
-    }
-
-    /// Dump the typesetting information.
-    /// Requires: [`Database::typesetting_pass`]
-    pub fn print_typesetting(&self) {
-        time(&self.options, "print_typesetting", || {
-            self.typesetting_result().dump();
-        })
-    }
-
-    /// Returns the outline node corresponding to the given statement
-    #[must_use]
-    pub const fn get_outline_node<'a>(&'a self, sref: StatementRef<'a>) -> OutlineNodeRef<'a> {
-        OutlineNodeRef::statement_node(self, sref)
-    }
-
-    /// Returns the root outline node, at the level of the whole database
-    #[must_use]
-    pub fn root_outline_node(&self) -> OutlineNodeRef<'_> {
-        OutlineNodeRef::root_node(self)
     }
 
     /// Collects and returns all errors generated by the passes run.
@@ -1005,18 +702,6 @@ impl Database {
         if let Some(pass) = self.try_verify_result() {
             diags.extend(pass.diagnostics())
         }
-        if let Some(pass) = self.try_usage_result() {
-            diags.extend_from_slice(&pass.diagnostics())
-        }
-        if let Some(pass) = self.try_grammar_result() {
-            diags.extend(pass.diagnostics())
-        }
-        if let Some(pass) = self.try_stmt_parse_result() {
-            diags.extend(pass.diagnostics())
-        }
-        if let Some(pass) = self.try_typesetting_result() {
-            diags.extend_from_slice(&pass.diagnostics)
-        }
         diags
     }
 
@@ -1030,5 +715,14 @@ impl Database {
         time(&self.options.clone(), "diag", move || {
             diag::to_annotations(self.parse_result(), &mut lc, diags, f)
         })
+    }
+
+    /// Parses and verifies file already loaded from FS into data
+    pub fn parse_and_verify(&mut self, start: String, data: Vec<(String, Vec<u8>)>) -> usize {
+        self.parse(start.clone(), data.clone());
+
+        self.verify_pass();
+
+        self.diag_notations().len()
     }
 }

@@ -34,7 +34,7 @@
 use std::{borrow::Cow, ops::Deref};
 
 use crate::{
-    comment_parser::{CommentParser, Discouragements, ParentheticalIter},
+    // comment_parser::{CommentParser, Discouragements, ParentheticalIter},
     parser::{HeadingComment, HeadingLevel},
     segment::SegmentRef,
 };
@@ -700,28 +700,6 @@ impl<'a> StatementRef<'a> {
     #[must_use]
     pub const fn comment_contents(&self) -> Span {
         Span::new2(self.statement.label.start + 2, self.span_full().end - 2)
-    }
-
-    /// Get an iterator over the markup items in this comment.
-    #[must_use]
-    pub fn comment_parser(&self) -> CommentParser<'a> {
-        CommentParser::new(&self.segment.segment.buffer, self.comment_contents())
-    }
-
-    /// Parse the associated commment to get the discouragements
-    /// (Proof modification / new usage discouraged) for this theorem.
-    pub fn discouragements(&self) -> Discouragements {
-        self.associated_comment()
-            .map_or_else(Discouragements::default, |c| {
-                Discouragements::new(c.comment_contents().as_ref(&self.segment.buffer))
-            })
-    }
-
-    /// Return an iterator over the parentheticals (like `(Contributed by ...)`)
-    /// in this comment statement.
-    #[must_use]
-    pub fn parentheticals(&self) -> ParentheticalIter<'a> {
-        ParentheticalIter::new(&self.segment.segment.buffer, self.comment_contents())
     }
 
     /// Returns a `HeadingComment` object for a heading comment (if it is actually a heading).

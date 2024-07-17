@@ -57,42 +57,16 @@ mod segment_set;
 mod tree;
 mod util;
 
-pub mod axiom_use;
-pub mod comment_parser;
 pub mod database;
 pub mod diag;
-pub mod discouraged;
-pub mod export;
 pub mod formula;
-pub mod grammar;
 pub mod line_cache;
 pub mod nameck;
-pub mod outline;
 pub mod parser;
 pub mod proof;
 pub mod scopeck;
 pub mod statement;
-pub mod typesetting;
 pub mod verify;
-
-#[cfg(feature = "verify_markup")]
-pub mod verify_markup;
-
-#[cfg(feature = "xml")]
-pub mod export_deps;
-
-#[cfg(test)]
-mod comment_parser_tests;
-#[cfg(test)]
-mod formula_tests;
-#[cfg(test)]
-mod grammar_tests;
-#[cfg(test)]
-mod parser_tests;
-#[cfg(test)]
-mod usage_tests;
-#[cfg(test)]
-mod util_tests;
 
 pub use database::Database;
 pub use formula::Formula;

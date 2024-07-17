@@ -48,17 +48,15 @@
 //! would make changing the beginning and end at the same time faster, and is
 //! attractive future work.
 
-use crate::database::{DbOptions, Executor, Promise};
+use crate::database::{Executor, Promise};
 use crate::diag::Diagnostic;
 use crate::segment::{Comparer, Segment, SegmentOrder, SegmentRef};
 use crate::statement::{SegmentId, StatementAddress};
-use crate::util::{find_chapter_header, HashMap, HashSet};
+use crate::util::{HashMap, HashSet};
 use crate::{parser, Span, StatementRef};
 use filetime::FileTime;
 use std::collections::VecDeque;
-use std::fs::{self, File};
 use std::hash::{Hash, Hasher};
-use std::io::{self, Read};
 use std::mem;
 use std::ops::RangeBounds;
 use std::str;
@@ -142,8 +140,6 @@ struct FileSR(Option<(String, FileTime)>, Vec<SliceSR>);
 /// may be moved.
 #[derive(Debug, Clone)]
 pub(crate) struct SegmentSet {
-    /// The option block controlling this database.
-    pub(crate) options: Arc<DbOptions>,
     /// The work queue for use with this database.
     pub(crate) exec: Executor,
     /// Order structure which records the relative order of segment IDs created
@@ -161,9 +157,8 @@ pub(crate) struct SegmentSet {
 impl SegmentSet {
     /// Start a new empty segment set in the context of an option block and
     /// executor which were previously created by the `Database`.
-    pub(crate) fn new(opts: Arc<DbOptions>, exec: &Executor) -> Self {
+    pub(crate) fn new(exec: &Executor) -> Self {
         SegmentSet {
-            options: opts,
             exec: exec.clone(),
             order: Arc::default(),
             segments: HashMap::default(),
@@ -248,13 +243,10 @@ impl SegmentSet {
         // data which is kept during the recursive load process, which does
         // _not_ have access to the SegmentSet
         struct RecState {
-            options: Arc<DbOptions>,
             /// second cache from the last load
             old_by_content: HashMap<LongBuf, Vec<Arc<Segment>>>,
             /// second cache which will be saved after this load is done
             new_by_content: HashMap<LongBuf, Vec<Arc<Segment>>>,
-            /// first cache from the last load
-            old_by_time: HashMap<(String, FileTime), FileSR>,
             /// first cache which will be saved after this load is done
             new_by_time: HashMap<(String, FileTime), FileSR>,
             /// segments which have been placed in the order so far
@@ -277,23 +269,7 @@ impl SegmentSet {
         ) -> Promise<FileSR> {
             let mut parts = Vec::new();
             let buf = Arc::new(buf);
-            // see if we need to parse this file in multiple slices.  the
-            // slicing is a slight incompatibility (no chapter headers inside
-            // groups) but is needed for full parallelism
-            if state.options.autosplit && buf.len() > 1_048_576 {
-                let mut sstart = 0;
-                loop {
-                    if let Some(chap) = find_chapter_header(&buf[sstart..]) {
-                        parts.push(sstart..sstart + chap);
-                        sstart += chap;
-                    } else {
-                        parts.push(sstart..buf.len());
-                        break;
-                    }
-                }
-            } else {
-                parts.push(0..buf.len());
-            }
+            parts.push(0..buf.len());
 
             let mut promises = Vec::new();
             for range in parts {
@@ -318,12 +294,8 @@ impl SegmentSet {
                     let sres = SliceSR(Some(cachekey), eseg.clone(), srcinfo);
                     promises.push(Promise::new(sres));
                 } else {
-                    let trace = state.options.trace_recalc;
                     // parse it on a worker thread
                     promises.push(state.exec.exec(partbuf.len(), move || {
-                        if trace {
-                            println!("parse({:?})", parser::guess_buffer_name(&partbuf));
-                        }
                         SliceSR(Some(cachekey), parser::parse_segments(&partbuf), srcinfo)
                     }));
                 }
@@ -332,28 +304,6 @@ impl SegmentSet {
             // does _not_ run on a worker thread
             Promise::join(promises)
                 .map(move |srlist| FileSR(timestamp.map(move |s| (path, s)), srlist))
-        }
-
-        // read a file from disk (intercessions have already been checked, but
-        // the first cache has not) and split/parse it;
-        // returns by Result Error on I/O error
-        fn canonicalize_and_read(state: &RecState, path: String) -> io::Result<Promise<FileSR>> {
-            let metadata = fs::metadata(&path)?;
-            let time = FileTime::from_last_modification_time(&metadata);
-
-            // probe 1st cache
-            if let Some(old_fsr) = state.old_by_time.get(&(path.clone(), time)) {
-                Ok(Promise::new(old_fsr.clone()))
-            } else {
-                // miss, but we have the file size, so try to read in one
-                // call to a buffer we won't have to move
-                let mut fh = File::open(&path)?;
-                let mut buf = Vec::with_capacity(metadata.len() as usize + 1);
-                // note: File's read_to_end uses the buffer capacity to choose how much to read
-                fh.read_to_end(&mut buf)?;
-
-                Ok(split_and_parse(state, path, Some(time), buf))
-            }
         }
 
         // We have a filename and an incomplete database in the RecState, read
@@ -369,22 +319,7 @@ impl SegmentSet {
             // check intercessions
             match state.preload.get(&path).cloned() {
                 None => {
-                    // read from FS
-                    canonicalize_and_read(state, path.clone()).unwrap_or_else(|cerr| {
-                        // read failed, insert a bogus segment so we have a
-                        // place to hang the errors
-                        let sinfo = SourceInfo {
-                            name: path.clone(),
-                            text: Arc::new(Vec::new()),
-                            span: Span::NULL,
-                        };
-                        let seg = parser::dummy_segment(From::from(cerr));
-                        // cache keys are None so this won't pollute any caches
-                        Promise::new(FileSR(
-                            None,
-                            vec![SliceSR(None, vec![seg], Arc::new(sinfo))],
-                        ))
-                    })
+                    panic!("Should read from file");
                 }
                 Some(data) => split_and_parse(state, path, None, data),
             }
@@ -444,10 +379,8 @@ impl SegmentSet {
         // things that are actually used, to avoid memory bloat
 
         let mut state = RecState {
-            options: self.options.clone(),
             old_by_content: mem::take(&mut self.parse_cache),
             new_by_content: HashMap::default(),
-            old_by_time: mem::take(&mut self.file_cache),
             new_by_time: HashMap::default(),
             segments: Vec::new(),
             included: HashSet::default(),

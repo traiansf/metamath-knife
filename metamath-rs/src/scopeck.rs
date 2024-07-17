@@ -38,9 +38,8 @@ use crate::statement::{
     TokenPtr, TokenRef, NO_STATEMENT,
 };
 use crate::util::{fast_extend, HashMap, HashSet};
-use crate::{parser, Label};
-use crate::{Database, StatementType};
-use crate::{Formula, StatementRef};
+use crate::StatementType;
+use crate::StatementRef;
 use std::collections::VecDeque;
 use std::ops::Range;
 use std::sync::Arc;
@@ -237,12 +236,6 @@ pub struct Frame {
 }
 
 impl Frame {
-    /// Augment a frame with a database reference, to produce a [`FrameRef`].
-    #[must_use]
-    pub const fn as_ref<'a>(&'a self, db: &'a Database) -> FrameRef<'a> {
-        FrameRef { db, frame: self }
-    }
-
     /// The list of mandatory variables in the frame.
     #[must_use]
     pub fn mandatory_vars(&self) -> &[Atom] {
@@ -969,8 +962,7 @@ impl ScopeResult {
 ///
 /// Use `ScopeResult::default()` to get an initial state.
 pub(crate) fn scope_check(result: &mut ScopeResult, segments: &SegmentSet, names: &Nameset) {
-    result.incremental |= result.frame_index.is_empty();
-    result.incremental &= segments.options.incremental;
+    result.incremental = false;
     result.generation += 1;
     let gen = result.generation;
     let mut ssrq = VecDeque::new();
@@ -992,9 +984,6 @@ pub(crate) fn scope_check(result: &mut ScopeResult, segments: &SegmentSet, names
                     if old_res.name_usage.valid(&names) && Arc::ptr_eq(&old_res.source, &sref) {
                         return None;
                     }
-                }
-                if segments2.options.trace_recalc {
-                    println!("scopeck({:?})", parser::guess_buffer_name(&sref.buffer));
                 }
                 Some(Arc::new(scope_check_single(&segments2, &names, sref)))
             }));
@@ -1054,21 +1043,6 @@ pub(crate) fn scope_check(result: &mut ScopeResult, segments: &SegmentSet, names
     }
 }
 
-/// A [`Frame`] reference in the context of a [`Database`].
-/// This allows the values in the [`Frame`] to be resolved,
-#[derive(Copy, Clone, Debug)]
-pub struct FrameRef<'a> {
-    db: &'a Database,
-    frame: &'a Frame,
-}
-
-impl std::ops::Deref for FrameRef<'_> {
-    type Target = Frame;
-
-    fn deref(&self) -> &Self::Target {
-        self.frame
-    }
-}
 
 impl Frame {
     /// Iterates over the floating hypotheses for this frame.
@@ -1080,47 +1054,6 @@ impl Frame {
                 None
             }
         })
-    }
-}
-
-impl<'a> FrameRef<'a> {
-    /// Iterates over the essential hypotheses for this frame.
-    pub fn essentials(self) -> impl Iterator<Item = (Label, &'a Formula)> {
-        let FrameRef { db, frame } = self;
-        frame.hypotheses.iter().filter_map(move |hyp| {
-            if let Hyp::Essential(sa, _) = hyp {
-                let sref = db.parse_result().statement(*sa);
-                let label = db
-                    .name_result()
-                    .lookup_label(sref.label())
-                    .map_or_else(Label::default, |l| l.atom);
-                let formula = db.stmt_parse_result().get_formula(&sref)?;
-                Some((label, formula))
-            } else {
-                None
-            }
-        })
-    }
-
-    /// Iterates over the floating hypotheses for this frame.
-    pub fn floating(self) -> impl Iterator<Item = Label> + 'a {
-        self.frame.floating().map(move |sa| {
-            let sref = self.db.parse_result().statement(sa);
-            self.db
-                .name_result()
-                .lookup_label(sref.label())
-                .map_or_else(Label::default, |l| l.atom)
-        })
-    }
-}
-
-impl Database {
-    /// Returns the frame for the given statement label
-    #[must_use]
-    pub fn get_frame(&self, label: Label) -> Option<FrameRef<'_>> {
-        let token = self.name_result().atom_name(label);
-        let frame = self.scope_result().get(token)?;
-        Some(frame.as_ref(self))
     }
 }
 

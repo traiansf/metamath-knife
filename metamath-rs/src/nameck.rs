@@ -17,7 +17,6 @@
 //!
 //! The nameset is also responsible for maintaining the `Atom` table.
 
-use crate::database::DbOptions;
 use crate::segment::Comparer;
 use crate::segment::Segment;
 use crate::segment::SegmentOrder;
@@ -152,7 +151,6 @@ fn intern(table: &mut AtomTable, tok: TokenPtr<'_>) -> Atom {
 #[derive(Default, Debug, Clone)]
 pub struct Nameset {
     atom_table: AtomTable,
-    options: Arc<DbOptions>,
     order: Arc<SegmentOrder>,
 
     generation: usize,
@@ -174,7 +172,6 @@ impl Nameset {
     pub(crate) fn update(&mut self, segs: &SegmentSet) {
         self.order = segs.order.clone();
         self.generation = self.generation.checked_add(1).unwrap();
-        self.options = segs.options.clone();
 
         // if we still have the exact same segment, keep it.  else remove the
         // old versions and add the new ones.  we are likely to optimize the
@@ -234,9 +231,6 @@ impl Nameset {
             let label = labelr.into();
             let slot = autoviv(&mut self.labels, label);
             slot.generation = self.generation;
-            if self.options.incremental && slot.atom == Atom::default() {
-                slot.atom = intern(&mut self.atom_table, labelr);
-            }
             slot_insert(
                 &mut slot.labels,
                 &*self.order,
@@ -509,7 +503,7 @@ impl<'a> NameReader<'a> {
     pub fn new(nameset: &'a Nameset) -> Self {
         NameReader {
             nameset,
-            incremental: nameset.options.incremental,
+            incremental: false,
             found_symbol: HashSet::default(),
             not_found_symbol: HashSet::default(),
             found_label: HashSet::default(),
