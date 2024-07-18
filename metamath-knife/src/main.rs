@@ -37,6 +37,17 @@ fn main() {
     let name_result = db.name_result().as_ref().clone();
     let scope_result = db.scope_result().as_ref().clone();
 
+/* Serializing/deserializing the data in memory
+
+    let parse_serialized = ron::to_string(&parse_result).unwrap();
+    let name_serialized = ron::to_string(&name_result).unwrap();
+    let scope_serialized = ron::to_string(&scope_result).unwrap();
+
+    let parse_result = ron::from_str(&parse_serialized).unwrap();
+    let name_result = ron::from_str(&name_serialized).unwrap();
+    let scope_result = ron::from_str(&scope_serialized).unwrap();
+*/
+
     // Init new database with parsed data
     let mut db_new = Database::new(options);
     db_new.init_verify(parse_result, name_result, scope_result);

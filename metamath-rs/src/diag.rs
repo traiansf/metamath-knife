@@ -32,6 +32,7 @@ use typed_arena::Arena;
 
 /// The three kinds of markup supported by `$t` typesetting comments.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum MarkupKind {
     /// The `htmldef` markup style, used in metamath for GIF-based rendering.
     Html,
@@ -91,6 +92,7 @@ impl HeadingLevel {
 /// handled by `to_annotations`.
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(missing_docs)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum Diagnostic {
     BadCharacter(usize, u8),
     BadCommand(Span),
@@ -127,9 +129,9 @@ pub enum Diagnostic {
     FloatRedeclared(StatementAddress),
     FormulaVerificationFailed,
     GrammarAmbiguous(StatementAddress),
-    GrammarCantBuild(&'static str),
+    GrammarCantBuild(String),
     GrammarProvableFloat,
-    HtmlParseError(Span, Vec<Cow<'static, str>>),
+    HtmlParseError(Span, Vec<String>),
     HeaderCommentParseError(HeadingLevel),
     InvalidAxiomRestatement(Span, Span),
     IoError(String),
@@ -239,8 +241,8 @@ pub(crate) fn to_annotations<T>(
 /// * `span` - The location of the error (byte offset within the segment; _this is
 /// not the same as the byte offset in the file_).
 type AnnInfo<'a> = (
-    Cow<'a, str>,
-    Vec<(AnnotationType, Cow<'a, str>, StatementRef<'a>, Span)>,
+    String,
+    Vec<(AnnotationType, String, StatementRef<'a>, Span)>,
 );
 
 /// Creates a `Snippet` containing a diagnostic annotation.
@@ -253,7 +255,7 @@ type AnnInfo<'a> = (
 #[must_use]
 fn make_snippet_from<'b, T>(
     label: &str,
-    infos: impl Iterator<Item = (AnnotationType, Cow<'b, str>, Span, &'b SourceInfo)>,
+    infos: impl Iterator<Item = (AnnotationType, String, Span, &'b SourceInfo)>,
     footer: &[&str],
     lc: &mut LineCache,
     f: impl for<'a> FnOnce(Snippet<'a>) -> T,
@@ -612,7 +614,7 @@ impl Diagnostic {
             )]),
             GrammarCantBuild(message) => ("Can't build the grammar".into(), vec![(
                 AnnotationType::Error,
-                (*message).into(),
+                message.clone(),
                 stmt,
                 stmt.span(),
             )]),
@@ -1185,6 +1187,7 @@ impl Diagnostic {
 /// An error during statement parsing.
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[allow(missing_docs)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum StmtParseError {
     ParsedStatementTooShort(Span, Option<Token>),
     ParsedStatementNoTypeCode,
@@ -1196,7 +1199,7 @@ pub enum StmtParseError {
 impl StmtParseError {
     /// The diagnostic's label
     #[must_use]
-    pub fn label<'a>(&self) -> Cow<'a, str> {
+    pub fn label<'a>(&self) -> String {
         match self {
             StmtParseError::ParsedStatementTooShort(_, _) => "Parsed statement too short",
             StmtParseError::ParsedStatementWrongTypeCode(_) => {
@@ -1228,10 +1231,9 @@ impl StmtParseError {
                     Some(tok) => format!(
                         "Statement is too short, expecting for example {expected}",
                         expected = t(tok)
-                    )
-                    .into(),
+                    ),
                     None => {
-                        "Statement is too short, and does not correspond to any valid prefix".into()
+                        "Statement is too short, and does not correspond to any valid prefix".to_string()
                     }
                 },
                 stmt,

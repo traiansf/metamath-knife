@@ -12,6 +12,7 @@ use std::slice;
 
 /// A set of variable indices.
 #[derive(Default, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Bitset {
     head: usize,
     // You can take out the Box here and it will still compile (and, with more

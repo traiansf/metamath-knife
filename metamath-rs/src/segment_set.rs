@@ -69,6 +69,7 @@ type FileTime = String;
 /// segments are long enough that their lengths are likely to contain enough
 /// entropy already.
 #[derive(Eq, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct LongBuf(Arc<Vec<u8>>);
 
 impl Hash for LongBuf {
@@ -91,7 +92,8 @@ impl PartialEq for LongBuf {
 /// changes.
 ///
 /// _This is likely to change when line number calculation is added._
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SourceInfo {
     /// Name of the source file as loaded.
     pub(crate) name: String,
@@ -120,10 +122,12 @@ impl SourceInfo {
 /// an I/O error, then it will not be inserted into the second cache as the
 /// "source" is not discriminating in that case (it will be empty).
 #[derive(Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct SliceSR(Option<LongBuf>, Vec<Arc<Segment>>, Arc<SourceInfo>);
 /// The result of parsing an actual source file is one or more slice results,
 /// and a key for the first cache if successful.
 #[derive(Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct FileSR(Option<(String, FileTime)>, Vec<SliceSR>);
 
 /// `SegmentSet` is a container for parsed databases.
@@ -140,6 +144,7 @@ struct FileSR(Option<(String, FileTime)>, Vec<SliceSR>);
 /// option block and the work queue executor, although those responsibilities
 /// may be moved.
 #[derive(Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SegmentSet {
     /// The work queue for use with this database.
     pub(crate) exec: Executor,

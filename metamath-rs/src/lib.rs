@@ -76,6 +76,7 @@ pub use formula::Symbol;
 pub use parser::is_valid_label;
 pub use segment::Comparer;
 pub use segment_set::SourceInfo;
+pub use segment_set::SegmentSet;
 pub use statement::as_str;
 pub use statement::Span;
 pub use statement::StatementRef;

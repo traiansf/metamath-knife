@@ -86,6 +86,7 @@ const fn is_mm_space(byte: u8) -> bool {
 }
 
 #[derive(Default, Debug, Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 /// The different types of heading markers, as defined in the Metamath book, section 4.4.1
 pub enum HeadingLevel {
     /// Virtual top-level heading, used as a root node

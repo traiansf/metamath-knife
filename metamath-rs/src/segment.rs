@@ -30,6 +30,7 @@ use crate::{
 /// polymorphically with the `cmp` method to order lists of segments,
 /// statements, or tokens.
 #[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct SegmentOrder {
     high_water: u32,
     order: Vec<SegmentId>,
@@ -208,7 +209,8 @@ pub(crate) type BufferRef = Arc<Vec<u8>>;
 /// change.  We may in the future have an "unpacked" segment which is used for
 /// active editing, as well as a "lazy" or "mmap" segment type for fast
 /// incremental startup.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Segment {
     /// The original string used to construct this segment.
     ///

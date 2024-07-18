@@ -61,6 +61,7 @@ use std::sync::Arc;
 ///
 /// [INC]: https://github.com/sorear/smetamath-rs/issues/11
 #[derive(Copy, Clone, Debug, PartialOrd, Ord, PartialEq, Eq, Default, Hash)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Atom(u32);
 
 // currently we use Vecs for a lot of things in the index.  we might consider
@@ -106,6 +107,7 @@ where
 
 // that which we keep in the hash slot for math symbols
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct SymbolInfo {
     atom: Atom,
     // generation is used for recalc tracking
@@ -117,6 +119,7 @@ struct SymbolInfo {
 }
 
 #[derive(Default, PartialEq, Eq, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct LabelInfo {
     atom: Atom,
     generation: usize,
@@ -124,6 +127,7 @@ struct LabelInfo {
 }
 
 #[derive(Default, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 struct AtomTable {
     table: HashMap<Token, Atom>,
     reverse: Vec<Token>,
@@ -149,6 +153,7 @@ fn intern(table: &mut AtomTable, tok: TokenPtr<'_>) -> Atom {
 /// methods thereon.  The reader can then be used at any later time to check
 /// recalculation.
 #[derive(Default, Debug, Clone)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Nameset {
     atom_table: AtomTable,
     order: Arc<SegmentOrder>,
@@ -428,6 +433,7 @@ pub struct NameReader<'a> {
 
 /// Usage data extracted from a `NameReader` at cycle end.
 #[derive(Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct NameUsage {
     generation: usize,
     incremental: bool,

@@ -62,6 +62,7 @@ pub const NO_STATEMENT: StatementIndex = -1;
 /// Spans will generally not be empty.  An empty span at position 0 is called a
 /// null span used as a sentinel value by several functions.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct Span {
     /// Index of first character of the range.
     pub start: FilePos,
@@ -128,6 +129,7 @@ impl Span {
 /// not exposed.  If you need to compare segment identifiers for order, get a
 /// reference to the database's `SegmentOrder` object.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SegmentId(pub u32);
 
 /// Semantic type for the index of a token in a statement.
@@ -139,6 +141,7 @@ pub type TokenIndex = i32;
 
 /// A statement is located by giving its segment and index within the segment.
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct StatementAddress {
     /// Segment which contains the statement.
     pub(crate) segment_id: SegmentId,
@@ -172,6 +175,7 @@ impl StatementAddress {
 /// In most cases you will use `Atom` instead, so the size of this struct, while
 /// a bit silly, doesn't matter so much.
 #[derive(Copy, Clone, Eq, PartialEq, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct TokenAddress {
     /// Address of the statement in which the token is defined.
     pub statement: StatementAddress,
@@ -193,6 +197,7 @@ impl TokenAddress {
 
 /// Expresses a valid range for a statement or token.
 #[derive(Copy, Clone, Debug, Default)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct GlobalRange {
     /// The starting position of the range, which is also the definition site.
     pub start: StatementAddress,
@@ -229,7 +234,8 @@ pub fn as_str(ptr: TokenPtr<'_>) -> &str {
 pub type GlobalSpan = (SegmentId, Span);
 
 /// Extracted data for a top-level `$d` statement in a segment.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct GlobalDv {
     /// The location of the statement.
     pub start: StatementIndex,
@@ -239,6 +245,7 @@ pub struct GlobalDv {
 
 /// Types of math symbols in declarations.
 #[derive(Eq, PartialEq, Hash, Copy, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum SymbolType {
     /// `$v`
     Variable,
@@ -248,13 +255,15 @@ pub enum SymbolType {
 
 /// Extracted information for a statement label in a segment.
 #[derive(Copy, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct LabelDef {
     /// The location of the labelled statement.
     pub index: StatementIndex,
 }
 
 /// Extracted information for a math symbol defined in a segment.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SymbolDef {
     /// The character sequence representing the symbol.
     pub name: Token,
@@ -267,7 +276,8 @@ pub struct SymbolDef {
 }
 
 /// Extracted information for a global `$f` statement in a segment.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct FloatDef {
     /// Location of the statement.
     pub start: StatementIndex,
@@ -283,6 +293,7 @@ pub struct FloatDef {
 ///
 /// These are used to populate the atom table in nameck.
 #[derive(Copy, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct LocalVarDef {
     /// Local index of the variable-declaring statement.
     pub index: StatementIndex,
@@ -291,7 +302,8 @@ pub struct LocalVarDef {
 }
 
 /// Extracted information for outline heading statements.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct HeadingDef {
     /// The name of the heading (this is not strictly speaking a token)
     pub name: Token,
@@ -323,6 +335,7 @@ pub(crate) fn unescape(
 
 /// An individual symbol in a command, either a string or other keyword.
 #[derive(Clone, Copy, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum CommandToken {
     /// A keyword (an identifier or symbol not surrounded in quotes)
     Keyword(Span),
@@ -376,6 +389,7 @@ pub type Command = (Span, Vec<CommandToken>);
 /// An enumeration of statement types, most of which correspond to statements as
 /// defined in the Metamath spec.
 #[derive(Default, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub enum StatementType {
     /// Psuedo statement used only to record end-of-file whitespace.
     Eof,
@@ -456,6 +470,7 @@ impl StatementType {
 /// The spans comprising the math and proof strings, and the parse errors if
 /// any, are stored in separate arrays within the segment.
 #[derive(Copy, Clone, Debug)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub(crate) struct Statement {
     /// Statement type, either a spec-defined type or one of the pseudo-types.
     pub(crate) stype: StatementType,

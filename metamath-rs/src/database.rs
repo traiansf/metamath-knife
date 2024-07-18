@@ -197,6 +197,21 @@ pub struct Executor {
     work_cv: Arc<Condvar>,
 }
 
+impl serde::Serialize for Executor {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: serde::Serializer {
+        if self.mutex.lock().unwrap().len() != 0 {
+            panic!("Attempting to serialize non-empty Executor");
+        }
+        ().serialize(serializer)
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Executor {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: serde::Deserializer<'de> {
+        <()>::deserialize(deserializer).map(|_| Executor::new(1))
+    }
+}
+
 /// Debug printing for `Executor` displays the current count of queued but not
 /// dispatched tasks.
 impl fmt::Debug for Executor {
@@ -717,6 +732,7 @@ impl Database {
         self.verify()
     }
 
+    /// Verifies the current database. Assumes parsing, name_pass, and scope_pass have been completed
     pub fn verify(&mut self) -> usize {
         let ver = verify(self.parse_result(), self.name_result(), self.scope_result());
         self.prev_verify = Some(ver.clone());
@@ -726,7 +742,7 @@ impl Database {
         self.diag_notations().len()
     }
 
-    ///
+    /// Performs parsing, name_pass, and scope_pass
     pub fn parse_and_name_scope_passes(&mut self, start: String, data: Vec<(String, Vec<u8>)>) {
         self.parse(start.clone(), data.clone());
 
@@ -734,6 +750,7 @@ impl Database {
         self.scope_pass();
     }
 
+    /// Reinitializes the database with given segments, nameset and scopes
     pub fn init_verify(&mut self, parse_result: SegmentSet, name_result: Nameset, scope_result: ScopeResult) {
         self.segments = Arc::new(parse_result);
         self.nameset = Some(Arc::new(name_result));
